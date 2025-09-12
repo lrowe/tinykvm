@@ -1421,8 +1421,8 @@ void Machine::setup_linux_system_calls(bool unsafe_syscalls)
 					// All the guest data is in the buffers, which is compatible with iovec
 					struct sockaddr_storage addr {};
 					struct msghdr msg {};
-					msg.msg_name = &addr;
-					msg.msg_namelen = sizeof(addr);
+					msg.msg_name = g_addr != 0x0 ? &addr : NULL;
+					msg.msg_namelen = g_addr != 0x0 ? sizeof(addr) : 0;
 					msg.msg_iov = (struct iovec *)&buffers[0];
 					msg.msg_iovlen = bufcount;
 					msg.msg_control = nullptr;
