@@ -65,6 +65,7 @@ int main(int argc, char** argv)
 		{"main", "Hello Main World!"},
 		{"LC_TYPE=C", "LC_ALL=C", "USER=root"});
 	//master_vm.print_pagetables();
+	master_vm.set_verbose_system_calls(true);
 
 	/* Create storage VM */
 	const tinykvm::MachineOptions storage_options {
@@ -74,6 +75,11 @@ int main(int argc, char** argv)
 		.verbose_loader = false,
 	};
 	tinykvm::Machine storage_vm{storage_binary, storage_options};
+	storage_vm.set_verbose_system_calls(true);
+	storage_vm.fds().set_open_readable_callback(
+		[&] (std::string& path) -> bool {
+		return true;
+	});
 	storage_vm.setup_linux(
 		{"storage", "Hello Storage World!"},
 		{"LC_TYPE=C", "LC_ALL=C", "USER=root"});

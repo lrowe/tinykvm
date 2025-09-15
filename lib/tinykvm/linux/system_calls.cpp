@@ -2241,6 +2241,112 @@ void Machine::setup_linux_system_calls(bool unsafe_syscalls)
 			cpu.stop();
 		});
 	Machine::install_syscall_handler(
+		SYS_open, [] (vCPU& cpu) { // OPENAT
+			auto& regs = cpu.registers();
+			const int vfd = AT_FDCWD;
+			const auto vpath = regs.rdi;
+			const int flags = regs.rsi & (O_CREAT | O_TRUNC | O_APPEND | O_RDWR | O_WRONLY);
+
+			std::string path = cpu.machine().memcstring(vpath, PATH_MAX);
+			std::string real_path;
+			bool write_flags = (flags & (O_WRONLY | O_RDWR)) != 0x0;
+			if (!write_flags)
+			{
+				try {
+					int pfd = cpu.machine().fds().current_working_directory_fd();
+					if (vfd != AT_FDCWD) {
+						pfd = cpu.machine().fds().translate(vfd);
+					}
+					real_path = path;
+					if (UNLIKELY(!cpu.machine().fds().is_readable_path(real_path))) {
+						regs.rax = -EACCES;
+						cpu.set_registers(regs);
+						SYSPRINT("OPENAT fd=%d path was not readable: %s\n",
+							vfd, real_path.c_str());
+						return;
+					}
+
+#ifdef OPENAT2_SUPPORTED
+					__u64 resolve = 0;
+					if (vfd == AT_FDCWD && !real_path.empty() && real_path[0] == '/') {
+						resolve |= RESOLVE_NO_MAGICLINKS; // NO_XDEV doesn't work here :(
+					} else {
+						resolve |= RESOLVE_IN_ROOT | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV;
+					}
+					struct open_how how {
+						.flags = __u64(flags),
+						.mode  = __u64(0),
+						.resolve = resolve,
+					};
+					int fd = syscall(SYS_openat2, pfd, real_path.c_str(), &how, sizeof(how));
+#else
+					int fd = syscall(SYS_openat, pfd, real_path.c_str(), 0);
+#endif
+					if (fd > 0) {
+						regs.rax = cpu.machine().fds().manage(fd, false);
+					} else {
+						regs.rax = -errno;
+					}
+					cpu.set_registers(regs);
+					SYSPRINT("OPEN fd=%lld path=%s (real_path=%s) = %d (%lld)\n",
+						path.c_str(), real_path.c_str(), fd, regs.rax);
+					return;
+				} catch (const std::exception& e) {
+					SYSPRINT("OPEN failed: %s\n", e.what());
+					SYSPRINT("OPEN path=%s flags=%X = %d\n",
+						path.c_str(), flags, -1);
+					regs.rax = -1;
+				}
+			}
+			if (write_flags || regs.rax == (__u64)-1)
+			{
+				try {
+					int pfd = cpu.machine().fds().current_working_directory_fd();
+					if (vfd != AT_FDCWD) {
+						pfd = cpu.machine().fds().translate(vfd);
+					}
+
+					real_path = path;
+					if (!cpu.machine().fds().is_writable_path(real_path)) {
+						SYSPRINT("OPEN fd=%d path was not writable: %s\n", real_path.c_str());
+						regs.rax = -EPERM;
+						cpu.set_registers(regs);
+						return;
+					}
+
+#ifdef OPENAT2_SUPPORTED
+					__u64 resolve = 0;
+					if (vfd == AT_FDCWD && !real_path.empty() && real_path[0] == '/') {
+						resolve |= RESOLVE_NO_MAGICLINKS; // NO_XDEV doesn't work here :(
+					} else {
+						resolve |= RESOLVE_IN_ROOT | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV;
+					}
+					struct open_how how {
+						.flags = __u64(flags),
+						.mode  = __u64(S_IWUSR | S_IRUSR),
+						.resolve = resolve,
+					};
+					int fd = syscall(SYS_openat2, pfd, real_path.c_str(), &how, sizeof(how));
+#else
+					int fd = syscall(SYS_openat, pfd, real_path.c_str(), 0);
+#endif
+					SYSPRINT("OPEN where=%lld path=%s (real_path=%s) flags=%X = fd %d\n",
+							 path.c_str(), real_path.c_str(), flags, fd);
+
+					if (fd > 0) {
+						regs.rax = cpu.machine().fds().manage(fd, false, true);
+					} else {
+						regs.rax = -errno;
+					}
+				} catch (...) {
+					regs.rax = -1;
+				}
+			}
+			cpu.set_registers(regs);
+			SYSPRINT("OPEN path=%s flags=%X = %lld\n",
+				path.c_str(), flags, regs.rax);
+		});
+	Machine::install_syscall_handler(
 		SYS_openat, [] (vCPU& cpu) { // OPENAT
 			auto& regs = cpu.registers();
 			const int vfd = regs.rdi;
