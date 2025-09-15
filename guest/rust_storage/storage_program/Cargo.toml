@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 png = "0.15.3"
 libc = "0.2"
-sqlite = "0.37.0"
+sqlite = { version = "0.37.0", features = ["bundled"] }
 
 [profile.release]
 lto=true
