@@ -1,3 +1,5 @@
+#![feature(allocator_api)]
+use std::alloc::Allocator;
 use std::process::ExitCode;
 use std::sync::{LazyLock, Mutex};
 use std::arch::asm;
@@ -21,12 +23,15 @@ fn set_fsbase(fsbase: u64) {
 }
 
 #[no_mangle]
-extern "C" fn remote_allocation(fsbase: u64, alloc: fn() -> Vec<i32>) -> Vec<i32> {
+extern "C" fn remote_allocation(fsbase: u64, alloc: &dyn Allocator) -> Vec<i32, &dyn Allocator> {
 	// Set the FSBASE to the provided value
 	set_fsbase(fsbase);
 	// Call the allocator function
-	return alloc();
-	//return vec![42, 43, 44];
+	let mut v = Vec::new_in(alloc);
+	v.push(42);
+	v.push(43);
+	v.push(44);
+	return v;
 }
 
 fn main() -> ExitCode

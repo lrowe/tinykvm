@@ -1,12 +1,12 @@
-#[global_allocator]
-static ALLOCATOR: emballoc::Allocator<4096> = emballoc::Allocator::new();
-extern crate alloc;
+#![feature(allocator_api)]
+use std::alloc::Allocator;
+use std::alloc::Global;
 
 use std::arch::asm;
 use std::process::ExitCode;
 extern "C" { fn remote_function(arg: fn(i32) -> i32, value: i32) -> i32; }
 // Perform a remote allocation with a local allocator
-extern "C" { fn remote_allocation(fsbase: u64, alloc: fn() -> Vec<i32>) -> Vec<i32>; }
+extern "C" { fn remote_allocation(fsbase: u64, alloc: &dyn Allocator) -> Vec<i32, &dyn Allocator>; }
 
 fn double_int(input: i32) -> i32 {
     return input * 2;
@@ -46,13 +46,6 @@ fn get_current_fsbase() -> u64 {
 	}
 	return fsbase;
 }
-fn alloc_vec() -> Vec<i32> {
-	let mut v = Vec::with_capacity(10);
-	for i in 0..10 {
-		v.push(i * 10);
-	}
-	return v;
-}
 
 fn main() -> ExitCode
 {
@@ -60,7 +53,7 @@ fn main() -> ExitCode
 	let result = unsafe { remote_function(double_int, 21) };
 	println!("Result from remote function: {}", result);
 
-	let vec = unsafe { remote_allocation(get_current_fsbase(), alloc_vec) };
+	let vec = unsafe { remote_allocation(get_current_fsbase(), &Global) };
 	println!("Received vector from remote allocation: {:?}", vec);
 
 	// Register callbacks
